@@ -15,7 +15,7 @@ El ecosistema integra las siguientes tecnologías y herramientas:
 
 *   **Orquestador:** [n8n](https://n8n.io/) (Flujo principal y manejo de lógica).
 *   **Motor de Inteligencia Artificial:** [DeepSeek V4 Flash](https://www.deepseek.com/) (Vía n8n LangChain Node).
-*   **Cerebro de Datos (Base de Datos):** [Airtable](https://airtable.com/) (Tablas relacionales: Productos, Clientes, Pedidos, Logs_Error).
+*   **Cerebro de Datos (Base de Datos):** [Airtable][(https://airtable.com/](https://airtable.com/invite/l?inviteId=invjGma97IVuk6Tv6&inviteToken=c4444b5a40ae6405c2c36f6645e7e068cbe08969e16e68704ccceb0dac99abc1&utm_medium=email&utm_source=product_team&utm_content=transactional-alerts)) (Tablas relacionales: Productos, Clientes, Pedidos, Logs_Error)].
 *   **Canales de Intervención y Salida:** 
     *   **Telegram API:** Aprobación humana (HITL) mediante notificaciones con botones nativos.
     *   **Gmail:** Confirmación de pedidos o notificación de ajustes a los clientes.
