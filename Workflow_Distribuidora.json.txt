@@ -1,0 +1,1793 @@
+{
+  "name": "Workflow Distribuidora",
+  "nodes": [
+    {
+      "parameters": {
+        "public": true,
+        "options": {}
+      },
+      "id": "82329b26-209e-4bb1-a5ee-e59d234a786f",
+      "name": "On Message (Chat Trigger)",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -2144,
+        368
+      ],
+      "webhookId": "12e3bb8c-9147-4a66-ab06-83db5c99fa73"
+    },
+    {
+      "parameters": {},
+      "id": "372e3008-56d5-4b15-927a-5fa1ba7da54e",
+      "name": "Descartar (Duplicado)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        -1472,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.sessionId }}",
+        "contextWindowLength": 15
+      },
+      "id": "78b7991f-df61-402e-99fd-181a391b9f27",
+      "name": "Memoria (Buffer por Sesion)",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        -1664,
+        592
+      ]
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"respuesta_cliente\": \"texto\",\n  \"requiere_aprobacion\": false,\n  \"resumen_pedido\": \"texto\",\n  \"email_cliente\": \"texto\",\n  \"id_cliente\": \"CLI-001 o vacio\",\n  \"productos_solicitados\": \"PRD-001, PRD-004 o vacio\",\n  \"cantidades\": \"2, 1 o vacio\",\n  \"total_estimado\": 0\n}",
+        "autoFix": true
+      },
+      "id": "3b2d08ba-df1e-4d04-9f29-c61c3c544363",
+      "name": "Parser de Salida Estructurada",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        -1312,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.chatInput }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "=Sos el asistente virtual de una distribuidora de panificados, snacks, frutos secos y aceite de oliva.\n\nTu función es atender consultas de clientes, consultar productos y precios, identificar clientes y preparar pedidos para su posterior aprobación humana.\n\n## 1. CONSULTAS DE PRODUCTOS\n\n* Para consultar stock o precio, SIEMPRE usá `Tool: Consultar Stock y Precio`.\n* Nunca inventes productos, precios ni stock.\n* Utilizá únicamente los datos devueltos por las tools.\n\n## 2. IDENTIFICACIÓN DEL CLIENTE\n\n* Primero utilizá `Tool: Buscar Cliente`.\n* Si el cliente existe, utilizá los datos reales devueltos por la tool.\n* Si no existe, pedile amablemente:\n\n  * nombre completo\n  * email\n  * teléfono\n* Luego utilizá `Tool: Crear Cliente Nuevo`.\n* Nunca inventes datos de clientes.\n\n## 3. ARMADO DEL PEDIDO\n\nCuando un cliente manifieste intención de realizar un pedido:\n\n1. Consultá mediante las tools los productos, precios y stock necesarios.\n2. Confirmá con el cliente los productos y cantidades.\n3. Calculá el total utilizando exclusivamente los precios reales obtenidos de Airtable.\n4. Informá al cliente exactamente qué productos, cantidades y total se van a registrar.\n5. Esperá una confirmación explícita del cliente.\n\nEjemplo:\n\n\"Perfecto. El pedido sería de 12 unidades de Producto X por un total de $50.400. ¿Querés que lo registre para enviarlo a aprobación?\"\n\nEn este momento:\n\n* `requiere_aprobacion` = false\n* `resumen_pedido` = vacío\n* `productos_solicitados` = vacío\n* `cantidades` = vacío\n* `total_estimado` = 0\n\n## 4. CONFIRMACIÓN DEL PEDIDO\n\nCuando el cliente confirme explícitamente el pedido previamente informado:\n\n* `requiere_aprobacion` DEBE ser true.\n* Completá `id_cliente` con el ID real del cliente.\n* Completá `email_cliente` con el email real del cliente.\n* Completá `productos_solicitados` con los productos correspondientes.\n* Completá `cantidades` con las cantidades correspondientes.\n* Completá `total_estimado` con el total real calculado.\n* Completá `resumen_pedido`.\n* `respuesta_cliente` debe indicar que el pedido fue preparado para su aprobación humana, sin afirmar que ya fue aprobado.\n\nIMPORTANTE:\n\nLos datos estructurados y `respuesta_cliente` deben representar EXACTAMENTE el mismo pedido.\n\nPor ejemplo, si `respuesta_cliente` indica:\n\n\"12 unidades por $50.400\"\n\nentonces obligatoriamente:\n\n* `cantidades` = \"12\"\n* `total_estimado` = 50400\n\nNunca generes números diferentes entre el texto y los campos estructurados.\n\n## 5. REGLA DE CONFIRMACIÓN\n\nUna confirmación explícita puede ser, por ejemplo:\n\n* \"Sí\"\n* \"Sí, confirmo\"\n* \"Confirmalo\"\n* \"Dale, registralo\"\n* \"Quiero ese pedido\"\n* \"Sí, hacelo\"\n\nSi el contexto de la conversación demuestra claramente que el cliente está confirmando el pedido previamente detallado, tratá ese mensaje como una confirmación explícita.\n\nSi el cliente modifica una cantidad, producto o cualquier condición del pedido, NO marques `requiere_aprobacion` como true todavía.\n\nPrimero actualizá el pedido, recalculá el total y solicitá nuevamente confirmación.\n\n## 6. RESPONSABILIDAD DEL AGENTE\n\nEl agente NO registra directamente el pedido en Airtable.\n\nNO existe una tool de IA para registrar pedidos.\n\nCuando el cliente confirma:\n\n* El agente solamente debe devolver correctamente el JSON.\n* `requiere_aprobacion` debe ser true.\n* El workflow principal de n8n se encargará posteriormente de crear el pedido en Airtable mediante un nodo determinístico.\n\nNunca afirmes que ejecutaste una herramienta de registro de pedidos porque esa herramienta no pertenece al agente.\n\n## 7. ANTI-ALUCINACIÓN\n\nNunca digas que un pedido fue registrado, creado, aprobado o enviado a aprobación si los datos necesarios no están presentes en el contexto actual.\n\nCuando `requiere_aprobacion` = false:\n\n* `resumen_pedido` debe quedar vacío.\n* `productos_solicitados` debe quedar vacío.\n* `cantidades` debe quedar vacío.\n* `total_estimado` debe ser 0.\n* `respuesta_cliente` no debe afirmar que existe un pedido registrado.\n\nCuando `requiere_aprobacion` = true:\n\n* Los datos del pedido deben provenir de información real obtenida durante la conversación y/o de las tools.\n* No inventes ningún ID, precio, cantidad, producto ni dato de cliente.\n\n## 8. JSON OBLIGATORIO\n\nRespondé SIEMPRE con el JSON completo en TODOS los turnos, sin excepción.\n\nEl texto destinado al cliente debe estar exclusivamente dentro de `respuesta_cliente`.\n\nNunca agregues texto fuera del JSON.\n\nEjemplo de consulta o pedido pendiente de confirmación:\n\n{\n\"id_cliente\": \"CLI-001\",\n\"email_cliente\": \"[cliente@email.com](mailto:cliente@email.com)\",\n\"respuesta_cliente\": \"El pedido sería de 12 unidades por $50.400. ¿Querés que lo registre para enviarlo a aprobación?\",\n\"requiere_aprobacion\": false,\n\"resumen_pedido\": \"\",\n\"productos_solicitados\": \"\",\n\"cantidades\": \"\",\n\"total_estimado\": 0\n}\n\nEjemplo de pedido confirmado:\n\n{\n\"id_cliente\": \"CLI-001\",\n\"email_cliente\": \"[cliente@email.com](mailto:cliente@email.com)\",\n\"respuesta_cliente\": \"Perfecto. Preparé el pedido de 12 unidades por $50.400 para enviarlo a aprobación humana.\",\n\"requiere_aprobacion\": true,\n\"resumen_pedido\": \"12 unidades de Producto X por $50.400\",\n\"productos_solicitados\": \"PRD-001\",\n\"cantidades\": \"12\",\n\"total_estimado\": 50400\n}\n\n## 9. ESTILO\n\n* Sé breve, cálido y profesional.\n* Utilizá español rioplatense.\n* No agregues explicaciones innecesarias.\n* No inventes información.\n\n## REGLA CRÍTICA FINAL\n\nSi el cliente confirma explícitamente un pedido cuyos productos, cantidades y precio ya fueron previamente acordados:\n\n`requiere_aprobacion` = true\n\ny los siguientes campos deben corresponder EXACTAMENTE al mismo pedido:\n\n* `productos_solicitados`\n* `cantidades`\n* `total_estimado`\n* `resumen_pedido`\n* `respuesta_cliente`\n\nNo existe ninguna condición relacionada con llamar a una tool de \"Registrar Pedido\" para determinar `requiere_aprobacion`.\n\nEl registro del pedido es responsabilidad del workflow de n8n, no del agente.\n"
+        }
+      },
+      "id": "76aa741c-415f-4a10-baad-7d04983dc952",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        -1536,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const out = $json.output || $json;\nreturn [{ json: {\n  id_cliente: out.id_cliente || '',\n  productos_solicitados: out.productos_solicitados || '',\n  cantidades: out.cantidades || '',\n  total_estimado: out.total_estimado || 0,\n  respuesta_cliente: out.respuesta_cliente || '',\n  requiere_aprobacion: !!out.requiere_aprobacion,\n  resumen_pedido: out.resumen_pedido || '',\n  email_cliente: out.email_cliente || '',\n  sessionId: $('On Message (Chat Trigger)').item.json.sessionId || ''\n} }];"
+      },
+      "id": "c01e921b-c49b-4a7a-81a9-277605b47b6a",
+      "name": "Normalizar Salida del Agente",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1264,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "model": "deepseek-v4-flash",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatDeepSeek",
+      "typeVersion": 1,
+      "position": [
+        -1824,
+        624
+      ],
+      "id": "146d581e-76b0-4ddf-964f-e54427555925",
+      "name": "DeepSeek Chat Model",
+      "credentials": {
+        "deepSeekApi": {
+          "id": "2z2rcVpmkB6FA4mg",
+          "name": "DeepSeek account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "airtableOAuth2Api",
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "appUBUx6ugdsJRCxI",
+          "mode": "list",
+          "cachedResultName": "airtable_schema_distribuidora.xlsx",
+          "cachedResultUrl": "https://airtable.com/appUBUx6ugdsJRCxI"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblTV61ykelyo3OTN",
+          "mode": "list",
+          "cachedResultName": "Productos",
+          "cachedResultUrl": "https://airtable.com/appUBUx6ugdsJRCxI/tblTV61ykelyo3OTN"
+        },
+        "filterByFormula": "={Stock_Actual} < {Stock_Minimo}",
+        "options": {}
+      },
+      "id": "c595b7e1-39a3-4b1e-a2c7-fa5ffa108cae",
+      "name": "Buscar Productos con Stock Bajo",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -1904,
+        1088
+      ],
+      "credentials": {
+        "airtableOAuth2Api": {
+          "id": "46RdZUBUMWLeWRkT",
+          "name": "Airtable OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst lineas = items.map(i => `- ${i.json.Nombre}: quedan ${i.json.Stock_Actual} (mínimo ${i.json.Stock_Minimo})`);\nreturn [{ json: { mensaje: '📦 Productos con stock bajo:\\n' + lineas.join('\\n') } }];"
+      },
+      "id": "30696ed7-cfae-451d-a631-cdbdf45af3df",
+      "name": "Armar Mensaje de Alerta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1472,
+        1024
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "129ef9ee-6962-4ac3-bfa2-5246e1450cbc",
+      "name": "Sin Novedades",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        -1472,
+        1216
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "airtableOAuth2Api",
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "appUBUx6ugdsJRCxI",
+          "mode": "list",
+          "cachedResultName": "airtable_schema_distribuidora.xlsx",
+          "cachedResultUrl": "https://airtable.com/appUBUx6ugdsJRCxI"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl5mUe63St5H8Z7Q",
+          "mode": "list",
+          "cachedResultName": "Clientes",
+          "cachedResultUrl": "https://airtable.com/appUBUx6ugdsJRCxI/tbl5mUe63St5H8Z7Q"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Telefono": 0
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "ID_Cliente",
+              "displayName": "ID_Cliente",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Nombre_Completo",
+              "displayName": "Nombre_Completo",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Telefono",
+              "displayName": "Telefono",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "SessionId_Chat",
+              "displayName": "SessionId_Chat",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Fecha_Alta",
+              "displayName": "Fecha_Alta",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Estado",
+              "displayName": "Estado",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Recurrente",
+                  "value": "Recurrente"
+                },
+                {
+                  "name": "Nuevo",
+                  "value": "Nuevo"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Pedidos",
+              "displayName": "Pedidos",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "141b84b7-c7e4-41bb-82ef-38e1dab88c5a",
+      "name": "Crear Cliente Nuevo",
+      "type": "n8n-nodes-base.airtableTool",
+      "typeVersion": 2.1,
+      "position": [
+        -1360,
+        784
+      ],
+      "credentials": {
+        "airtableOAuth2Api": {
+          "id": "46RdZUBUMWLeWRkT",
+          "name": "Airtable OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "airtableOAuth2Api",
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "appUBUx6ugdsJRCxI",
+          "mode": "list",
+          "cachedResultName": "airtable_schema_distribuidora.xlsx",
+          "cachedResultUrl": "https://airtable.com/appUBUx6ugdsJRCxI"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl5mUe63St5H8Z7Q",
+          "mode": "list",
+          "cachedResultName": "Clientes",
+          "cachedResultUrl": "https://airtable.com/appUBUx6ugdsJRCxI/tbl5mUe63St5H8Z7Q"
+        },
+        "filterByFormula": "=OR({SessionId_Chat}='{{ $fromAI(\"session_id\", \"sessionId de la conversacion actual\", \"string\") }}', {Email}='{{ $fromAI(\"email\", \"email del cliente si lo menciono\", \"string\") }}')",
+        "options": {}
+      },
+      "id": "5adb24be-6703-4b58-8876-20f3f64cffed",
+      "name": "Buscar Cliente",
+      "type": "n8n-nodes-base.airtableTool",
+      "typeVersion": 2.1,
+      "position": [
+        -1488,
+        752
+      ],
+      "credentials": {
+        "airtableOAuth2Api": {
+          "id": "46RdZUBUMWLeWRkT",
+          "name": "Airtable OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "airtableOAuth2Api",
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "appUBUx6ugdsJRCxI",
+          "mode": "list",
+          "cachedResultName": "airtable_schema_distribuidora.xlsx",
+          "cachedResultUrl": "https://airtable.com/appUBUx6ugdsJRCxI"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblTV61ykelyo3OTN",
+          "mode": "list",
+          "cachedResultName": "Productos",
+          "cachedResultUrl": "https://airtable.com/appUBUx6ugdsJRCxI/tblTV61ykelyo3OTN"
+        },
+        "filterByFormula": "=SEARCH(LOWER(\"{{ $fromAI('nombre_producto', 'Nombre o palabra clave del producto que busca el cliente', 'string') }}\"), LOWER({Nombre}))",
+        "options": {}
+      },
+      "id": "3daf090c-9218-43da-8864-08b48bea7f57",
+      "name": "Consultar Stock y Precio",
+      "type": "n8n-nodes-base.airtableTool",
+      "typeVersion": 2.1,
+      "position": [
+        -1632,
+        784
+      ],
+      "credentials": {
+        "airtableOAuth2Api": {
+          "id": "46RdZUBUMWLeWRkT",
+          "name": "Airtable OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "acd22d9f-60b2-42ac-855a-1d0cc125d6c6",
+              "name": "output",
+              "value": "=¡Tu pedido fue aprobado y confirmado! {{ $('Normalizar Salida del Agente').item.json.resumen_pedido }}. Gracias por tu compra.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        464,
+        32
+      ],
+      "id": "964cdefe-1da4-43e9-bc36-f521c793c6c3",
+      "name": "Salida al chat"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "acd22d9f-60b2-42ac-855a-1d0cc125d6c6",
+              "name": "output",
+              "value": "=Tu pedido no fue aprobado tal como estaba. Nos vamos a contactar para ajustar los detalles.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        464,
+        192
+      ],
+      "id": "9bfdac76-b564-41eb-948a-f1e4501fea2e",
+      "name": "Salida al chat1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.data.approved }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "41e8727f-b859-4d5b-8833-f350bc54bc11",
+      "name": "Fue Aprobado?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -144,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.isDuplicate }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "08c50be3-246d-4b7f-b671-824659855208",
+      "name": "Es Duplicado?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1696,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.requiere_aprobacion }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ce26d6b2-7dcf-409f-85d8-c0f48e953bb1",
+      "name": "Requiere Aprobacion Humana?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1040,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c0c2d70c-a72f-4a19-be20-69ba5dee0d37",
+              "name": "output",
+              "value": "={{ $('Normalizar Salida del Agente').item.json.respuesta_cliente + '\\n\\n(También te lo mandé por mail)' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        -368,
+        416
+      ],
+      "id": "513f6e8d-9223-4e09-9ff2-4067f26deb08",
+      "name": "salida al chat"
+    },
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "chatId": "1486091356",
+        "message": "=🔔 Nuevo pedido para aprobar\nResumen: {{ $('Normalizar Salida del Agente').item.json.resumen_pedido }}\nCliente: {{ $('Normalizar Salida del Agente').item.json.email_cliente }}",
+        "approvalOptions": {
+          "values": {
+            "approvalType": "double"
+          }
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -368,
+        160
+      ],
+      "id": "eabcec49-d525-4b81-add8-f77689a69f0d",
+      "name": "Aprobacion humana",
+      "webhookId": "90ed001a-6178-468f-b8b8-fbcc170fee8a",
+      "credentials": {
+        "telegramApi": {
+          "id": "fr1YuKjcimXMFAOB",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('AI Agent').item.json.output.email_cliente }}",
+        "subject": "Respuesta a tu consulta",
+        "message": "={{ $json.respuesta_cliente }}",
+        "options": {}
+      },
+      "id": "ec0f595b-4fc5-4a6d-82ae-06707210d70a",
+      "name": "Responder Directo",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -592,
+        416
+      ],
+      "webhookId": "32c5ad58-954c-4d5a-a655-2cfcf4cd339e",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "9bca0iWyOeUPS5Ao",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Normalizar Salida del Agente').item.json.email_cliente }}",
+        "subject": "=Sobre tu pedido {{ $('Normalizar Salida del Agente').item.json.id_pedido }}",
+        "message": "Hola, tu pedido necesita un ajuste antes de confirmarse. En breve nos contactamos para coordinar los detalles.",
+        "options": {}
+      },
+      "id": "8e601484-1d94-40e7-a047-15e3e1757502",
+      "name": "Informar Ajuste/Rechazo",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        256,
+        192
+      ],
+      "webhookId": "eec5238a-983c-47d1-a077-e8aa939b8bce",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "ui5KVZKlLa3HbVLq",
+          "name": "Gmail account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Normalizar Salida del Agente').item.json.email_cliente }}",
+        "subject": "=Confirmacion de tu pedido {{ $('Normalizar Salida del Agente').item.json.id_pedido }}",
+        "message": "={{ $('Normalizar Salida del Agente').item.json.respuesta_cliente }}\n\nTu pedido fue aprobado y ya lo estamos preparando. ¡Gracias por tu compra!",
+        "options": {}
+      },
+      "id": "871c8a71-5a6b-4fa8-8ed9-f189c196f845",
+      "name": "Confirmar Pedido",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        256,
+        32
+      ],
+      "webhookId": "e364981f-044d-474d-8a29-be1b79b98125",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "ui5KVZKlLa3HbVLq",
+          "name": "Gmail account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "airtableOAuth2Api",
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "appUBUx6ugdsJRCxI",
+          "mode": "list",
+          "cachedResultName": "airtable_schema_distribuidora.xlsx",
+          "cachedResultUrl": "https://airtable.com/appUBUx6ugdsJRCxI"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblfbm4Ww4A4m6L42",
+          "mode": "list",
+          "cachedResultName": "Logs_Error",
+          "cachedResultUrl": "https://airtable.com/appUBUx6ugdsJRCxI/tblfbm4Ww4A4m6L42"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $('Crear pedido en Airtable').item.json.id }}",
+            "Estado": "Aprobado por Humano"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true
+            },
+            {
+              "id": "ID_Pedido",
+              "displayName": "ID_Pedido",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ID_Cliente",
+              "displayName": "ID_Cliente",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ID_Cliente (from ID_Cliente)",
+              "displayName": "ID_Cliente (from ID_Cliente)",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Productos_Solicitados",
+              "displayName": "Productos_Solicitados",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ID_Producto (from Productos_Solicitados)",
+              "displayName": "ID_Producto (from Productos_Solicitados)",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Cantidades",
+              "displayName": "Cantidades",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Total_Estimado_ARS",
+              "displayName": "Total_Estimado_ARS",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Estado",
+              "displayName": "Estado",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Pendiente",
+                  "value": "Pendiente"
+                },
+                {
+                  "name": "Procesado por IA",
+                  "value": "Procesado por IA"
+                },
+                {
+                  "name": "Aprobado por Humano",
+                  "value": "Aprobado por Humano"
+                },
+                {
+                  "name": "Enviado",
+                  "value": "Enviado"
+                },
+                {
+                  "name": "Rechazado",
+                  "value": "Rechazado"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Fecha",
+              "displayName": "Fecha",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Notas_IA",
+              "displayName": "Notas_IA",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Logs_Error",
+              "displayName": "Logs_Error",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "URL_Aprobacion",
+              "displayName": "URL_Aprobacion",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.2,
+      "position": [
+        80,
+        32
+      ],
+      "id": "4700efca-4feb-4009-a64b-1303a5ed3795",
+      "name": "Actualizar pedidos",
+      "credentials": {
+        "airtableOAuth2Api": {
+          "id": "46RdZUBUMWLeWRkT",
+          "name": "Airtable OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "airtableOAuth2Api",
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "appUBUx6ugdsJRCxI",
+          "mode": "list",
+          "cachedResultName": "airtable_schema_distribuidora.xlsx",
+          "cachedResultUrl": "https://airtable.com/appUBUx6ugdsJRCxI"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblXit9stV18u3nng",
+          "mode": "list",
+          "cachedResultName": "Pedidos",
+          "cachedResultUrl": "https://airtable.com/appUBUx6ugdsJRCxI/tblXit9stV18u3nng"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $('Crear pedido en Airtable').item.json.id }}",
+            "Estado": "Rechazado"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "ID_Pedido",
+              "displayName": "ID_Pedido",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ID_Cliente",
+              "displayName": "ID_Cliente",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ID_Cliente (from ID_Cliente)",
+              "displayName": "ID_Cliente (from ID_Cliente)",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Productos_Solicitados",
+              "displayName": "Productos_Solicitados",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ID_Producto (from Productos_Solicitados)",
+              "displayName": "ID_Producto (from Productos_Solicitados)",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Cantidades",
+              "displayName": "Cantidades",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Total_Estimado_ARS",
+              "displayName": "Total_Estimado_ARS",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Estado",
+              "displayName": "Estado",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Pendiente",
+                  "value": "Pendiente"
+                },
+                {
+                  "name": "Procesado por IA",
+                  "value": "Procesado por IA"
+                },
+                {
+                  "name": "Aprobado por Humano",
+                  "value": "Aprobado por Humano"
+                },
+                {
+                  "name": "Enviado",
+                  "value": "Enviado"
+                },
+                {
+                  "name": "Rechazado",
+                  "value": "Rechazado"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Fecha",
+              "displayName": "Fecha",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Notas_IA",
+              "displayName": "Notas_IA",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Logs_Error",
+              "displayName": "Logs_Error",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "URL_Aprobacion",
+              "displayName": "URL_Aprobacion",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.2,
+      "position": [
+        80,
+        192
+      ],
+      "id": "ef32b862-5589-46c3-8094-b35817987cb0",
+      "name": "Actualizar pedidos1",
+      "credentials": {
+        "airtableOAuth2Api": {
+          "id": "46RdZUBUMWLeWRkT",
+          "name": "Airtable OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "0f2f9ec3-728e-4b4f-8640-0ed120f281c3",
+              "name": "output",
+              "value": "={{ $('Normalizar Salida del Agente').item.json.respuesta_cliente }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        -592,
+        224
+      ],
+      "id": "2cfd3029-7ec9-41fd-ba81-1d5f2341be77",
+      "name": "salida al chat1"
+    },
+    {
+      "parameters": {
+        "authentication": "airtableOAuth2Api",
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "appUBUx6ugdsJRCxI",
+          "mode": "list",
+          "cachedResultName": "airtable_schema_distribuidora.xlsx",
+          "cachedResultUrl": "https://airtable.com/appUBUx6ugdsJRCxI"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblXit9stV18u3nng",
+          "mode": "list",
+          "cachedResultName": "Pedidos",
+          "cachedResultUrl": "https://airtable.com/appUBUx6ugdsJRCxI/tblXit9stV18u3nng"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ID_Pedido": "={{ 'PED-' + Date.now() }}",
+            "ID_Cliente": "={{ $json.id_cliente }}",
+            "Productos_Solicitados": "= {{ $json.productos_solicitados }}",
+            "Cantidades": "={{ $json.cantidades }}",
+            "Total_Estimado_ARS": "= {{ $json.total_estimado }} ",
+            "Estado": "Procesado por IA",
+            "Fecha": "={{ $today }}",
+            "Notas_IA": "={{ $json.resumen_pedido }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "ID_Pedido",
+              "displayName": "ID_Pedido",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "ID_Cliente",
+              "displayName": "ID_Cliente",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "ID_Cliente (from ID_Cliente)",
+              "displayName": "ID_Cliente (from ID_Cliente)",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Productos_Solicitados",
+              "displayName": "Productos_Solicitados",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "ID_Producto (from Productos_Solicitados)",
+              "displayName": "ID_Producto (from Productos_Solicitados)",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Cantidades",
+              "displayName": "Cantidades",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Total_Estimado_ARS",
+              "displayName": "Total_Estimado_ARS",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Estado",
+              "displayName": "Estado",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Pendiente",
+                  "value": "Pendiente"
+                },
+                {
+                  "name": "Procesado por IA",
+                  "value": "Procesado por IA"
+                },
+                {
+                  "name": "Aprobado por Humano",
+                  "value": "Aprobado por Humano"
+                },
+                {
+                  "name": "Enviado",
+                  "value": "Enviado"
+                },
+                {
+                  "name": "Rechazado",
+                  "value": "Rechazado"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Fecha",
+              "displayName": "Fecha",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Notas_IA",
+              "displayName": "Notas_IA",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Logs_Error",
+              "displayName": "Logs_Error",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "URL_Aprobacion",
+              "displayName": "URL_Aprobacion",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.2,
+      "position": [
+        -816,
+        272
+      ],
+      "id": "693d1694-f316-4a94-ae24-c1a235c9f26a",
+      "name": "Crear pedido en Airtable",
+      "credentials": {
+        "airtableOAuth2Api": {
+          "id": "46RdZUBUMWLeWRkT",
+          "name": "Airtable OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const staticData = $getWorkflowStaticData('node');\nconst sessionId = $json.sessionId || 'anon';\nconst now = Date.now();\nconst lastSeen = staticData[sessionId] || 0;\nconst minGapMs = 3000; // ventana minima entre mensajes de la misma sesion\nconst isDuplicate = (now - lastSeen) < minGapMs;\nif (!isDuplicate) { staticData[sessionId] = now; }\nreturn [{ json: { ...$json, isDuplicate } }];"
+      },
+      "id": "3a7656b8-4f6b-4dac-ae41-5ff02e3e6215",
+      "name": "Filtro Anti-Loop",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1920,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $items().length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "1fb0b5a3-67b1-4b89-a854-e5f90bdec02f",
+      "name": "Hay productos con stock bajo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1680,
+        1088
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "1486091356",
+        "text": "={{ $json.mensaje }}",
+        "additionalFields": {}
+      },
+      "id": "b3344917-c698-4d47-b1f6-03b66acd13e3",
+      "name": "Enviar Alerta de Stock",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -1248,
+        1024
+      ],
+      "webhookId": "e180b136-f0b4-4490-afb4-f29170314e5a",
+      "credentials": {
+        "telegramApi": {
+          "id": "fr1YuKjcimXMFAOB",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "id": "ff614987-03ad-456c-a6df-e8be557216f2",
+      "name": "Schedule Trigger para stock bajo",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -2128,
+        1088
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "011769b2-dad1-442f-911a-4ff906a1040c",
+              "leftValue": "={{ !!($json.email_cliente && $json.email_cliente.trim().length > 0) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -816,
+        496
+      ],
+      "id": "464ee21c-09e9-49df-8aaa-9c6ecf672360",
+      "name": "Tiene mail ?"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c0c2d70c-a72f-4a19-be20-69ba5dee0d37",
+              "name": "output",
+              "value": "={{ $('Normalizar Salida del Agente').item.json.respuesta_cliente }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        -592,
+        576
+      ],
+      "id": "64167da3-541a-44bd-8145-d03eb4d5bceb",
+      "name": "salida al chat2"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "On Message (Chat Trigger)": {
+      "main": [
+        [
+          {
+            "node": "Filtro Anti-Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Memoria (Buffer por Sesion)": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parser de Salida Estructurada": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Normalizar Salida del Agente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar Salida del Agente": {
+      "main": [
+        [
+          {
+            "node": "Requiere Aprobacion Humana?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DeepSeek Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Productos con Stock Bajo": {
+      "main": [
+        [
+          {
+            "node": "Hay productos con stock bajo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar Mensaje de Alerta": {
+      "main": [
+        [
+          {
+            "node": "Enviar Alerta de Stock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crear Cliente Nuevo": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Cliente": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consultar Stock y Precio": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fue Aprobado?": {
+      "main": [
+        [
+          {
+            "node": "Actualizar pedidos",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Actualizar pedidos1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Es Duplicado?": {
+      "main": [
+        [
+          {
+            "node": "Descartar (Duplicado)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Requiere Aprobacion Humana?": {
+      "main": [
+        [
+          {
+            "node": "Crear pedido en Airtable",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Tiene mail ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aprobacion humana": {
+      "main": [
+        [
+          {
+            "node": "Fue Aprobado?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Responder Directo": {
+      "main": [
+        [
+          {
+            "node": "salida al chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Informar Ajuste/Rechazo": {
+      "main": [
+        [
+          {
+            "node": "Salida al chat1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirmar Pedido": {
+      "main": [
+        [
+          {
+            "node": "Salida al chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Actualizar pedidos": {
+      "main": [
+        [
+          {
+            "node": "Confirmar Pedido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Actualizar pedidos1": {
+      "main": [
+        [
+          {
+            "node": "Informar Ajuste/Rechazo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "salida al chat1": {
+      "main": [
+        [
+          {
+            "node": "Aprobacion humana",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crear pedido en Airtable": {
+      "main": [
+        [
+          {
+            "node": "salida al chat1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtro Anti-Loop": {
+      "main": [
+        [
+          {
+            "node": "Es Duplicado?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hay productos con stock bajo?": {
+      "main": [
+        [
+          {
+            "node": "Armar Mensaje de Alerta",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sin Novedades",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger para stock bajo": {
+      "main": [
+        [
+          {
+            "node": "Buscar Productos con Stock Bajo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tiene mail ?": {
+      "main": [
+        [
+          {
+            "node": "Responder Directo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "salida al chat2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "Tio1Ac9f7XBLoihd",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "68e7fe87-b2f5-43f4-ab83-96d241f92698",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8fbbf92d62e5a8d40f90ac0f8441dad56fe990e9f59ff823c2f4b7690d8bb89e"
+  },
+  "nodeGroups": [],
+  "id": "HTrFcwfJECZ5wF5f",
+  "tags": []
+}

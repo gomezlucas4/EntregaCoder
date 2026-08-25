@@ -1,0 +1,170 @@
+{
+  "name": "Distribuidora - Error Handler",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "4030aa2e-c57b-46e1-a174-fbfbb23281a1",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "jsCode": "const e = $json;\nreturn [{ json: {\n  id_log: 'LOG-' + Date.now(),\n  fecha_hora: new Date().toISOString(),\n  nodo: e.execution?.lastNodeExecuted || 'desconocido',\n  tipo_error: e.execution?.error?.message || 'Error sin mensaje',\n  payload_resumen: JSON.stringify(e.execution?.error || {}).slice(0, 500),\n  workflow: e.workflow?.name || ''\n} }];"
+      },
+      "id": "bad6846a-eb5e-4520-af1c-4d2a365e95c3",
+      "name": "Armar Registro de Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "airtableOAuth2Api",
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "appUBUx6ugdsJRCxI",
+          "mode": "list",
+          "cachedResultName": "airtable_schema_distribuidora.xlsx",
+          "cachedResultUrl": "https://airtable.com/appUBUx6ugdsJRCxI"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblfbm4Ww4A4m6L42",
+          "mode": "list",
+          "cachedResultName": "Logs_Error",
+          "cachedResultUrl": "https://airtable.com/appUBUx6ugdsJRCxI/tblfbm4Ww4A4m6L42"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ID_Log": "={{ $json.id_log }}",
+            "Fecha_Hora": "={{ $json.fecha_hora }}",
+            "Nodo_n8n": "={{ $json.nodo }}",
+            "Tipo_Error": "={{ $json.tipo_error }}",
+            "Payload_Resumen": "={{ $json.payload_resumen }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "ee344d80-aa72-4523-8f20-dade974676ac",
+      "name": "Guardar Log en Airtable",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        448,
+        0
+      ],
+      "credentials": {
+        "airtableOAuth2Api": {
+          "id": "46RdZUBUMWLeWRkT",
+          "name": "Airtable OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "1486091356",
+        "text": "=⚠️ Error en workflow '{{ $('Armar Registro de Error').item.json.workflow }}'\nNodo: {{ $('Armar Registro de Error').item.json.nodo }}\nDetalle: {{ $('Armar Registro de Error').item.json.tipo_error }}",
+        "additionalFields": {}
+      },
+      "id": "1f7c7606-733e-491c-a243-6817072279df",
+      "name": "Alerta critica",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        672,
+        0
+      ],
+      "webhookId": "31d44b33-ddcc-4a11-9621-3f9033ed4364",
+      "credentials": {
+        "telegramApi": {
+          "id": "fr1YuKjcimXMFAOB",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "pinData": {
+    "Error Trigger": [
+      {
+        "json": {
+          "execution": {
+            "id": 231,
+            "url": "https://lucasg96.app.n8n.cloud/execution/workflow/1/231",
+            "retryOf": "34",
+            "error": {
+              "message": "Example Error Message",
+              "stack": "Stacktrace"
+            },
+            "lastNodeExecuted": "Node With Error",
+            "mode": "manual"
+          },
+          "workflow": {
+            "id": "1",
+            "name": "Example Workflow"
+          }
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Armar Registro de Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar Registro de Error": {
+      "main": [
+        [
+          {
+            "node": "Guardar Log en Airtable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar Log en Airtable": {
+      "main": [
+        [
+          {
+            "node": "Alerta critica",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "bf1e2fd5-84be-45bb-8a2b-d92c551b825e",
+  "meta": {
+    "instanceId": "8fbbf92d62e5a8d40f90ac0f8441dad56fe990e9f59ff823c2f4b7690d8bb89e"
+  },
+  "nodeGroups": [],
+  "id": "Tio1Ac9f7XBLoihd",
+  "tags": []
+}
