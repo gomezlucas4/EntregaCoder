@@ -1,0 +1,279 @@
+{
+  "name": "1-CUENTA",
+  "nodes": [
+    {
+      "parameters": {
+        "model": "qwen/qwen3.8-27b",
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        112,
+        512
+      ],
+      "id": "56ace1be-29c3-4be8-8754-b7a3c80cef9a",
+      "name": "Groq Chat Model",
+      "credentials": {
+        "groqApi": {
+          "id": "QZBpb9cfNQ47n47F",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "original_input"
+            },
+            {
+              "name": "intent"
+            },
+            {
+              "name": "confidence",
+              "type": "number"
+            },
+            {
+              "name": "risk"
+            },
+            {
+              "name": "chat_id"
+            },
+            {
+              "name": "nombre_telegram"
+            }
+          ]
+        }
+      },
+      "id": "716c1efd-6668-411a-a6df-d7e0a844e748",
+      "name": "Entrada desde Manager",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -128,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Sos el especialista en cuentas de Distribuidora Petriella, una distribuidora de productos de panadería, snacks y frutos secos.\n\nSolicitud original:\n{{ $json.original_input }}\n\nNombre en Telegram: {{ $json.nombre_telegram }}\nIntención detectada: {{ $json.intent }}\nConfianza: {{ $json.confidence }}\nRiesgo: {{ $json.risk }}\n\nTu tarea es registrar la solicitud del cliente sobre su cuenta para que administración la resuelva, y avisarle que fue recibida. Atendé únicamente facturas, pagos, comprobantes, saldo y estado de cuenta corriente.\n\nNo informes montos, saldos ni deudas. No confirmes pagos ni prometas envíos de comprobantes, descuentos o plazos. No inventes datos: si algo no figura en el mensaje, escribí \"No informado\".\n\nTipo de solicitud: \"Factura\", \"Pago o comprobante\", \"Saldo o estado de cuenta\" u \"Otro\".\n\nSi la solicitud involucra montos, saldos, disputas de pagos o no tenés información suficiente, requires_human debe ser true.\n\nEscribí en español rioplatense, sin lenguaje inclusivo con terminaciones en -e, -x o @.\n\nRespondé SOLO como JSON válido, sin markdown:\n{\n  \"status\": \"success\",\n  \"worker\": \"CUENTAS\",\n  \"nombre\": \"nombre del cliente o No informado\",\n  \"tipo\": \"Factura\",\n  \"detalle\": \"descripción breve y operativa de la solicitud\",\n  \"respuesta\": \"respuesta breve y clara para el cliente\",\n  \"requires_human\": false\n}",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        112,
+        336
+      ],
+      "id": "09c13d0a-7476-410d-901c-0ba24f09149e",
+      "name": "Especialista en CUENTA"
+    },
+    {
+      "parameters": {
+        "jsCode": "const entrada = $('Entrada desde Manager').first().json;\nconst raw = $json.text ?? $json.output ?? $json.response ?? '';\nlet d;\ntry {\n  d = JSON.parse(String(raw).replace(/```json|```/gi, '').trim());\n} catch (e) {\n  d = {\n    status: 'error',\n    nombre: 'No informado',\n    tipo: 'Otro',\n    detalle: String(raw || 'No se pudo interpretar la respuesta del especialista.'),\n    respuesta: 'Registramos tu solicitud y administración se va a comunicar con vos.',\n    requires_human: true\n  };\n}\nconst tipos = ['Factura', 'Pago o comprobante', 'Saldo o estado de cuenta', 'Otro'];\nreturn [{ json: {\n  fecha: new Date().toISOString(),\n  chat_id: entrada.chat_id,\n  nombre: d.nombre ?? 'No informado',\n  tipo: tipos.includes(d.tipo) ? d.tipo : 'Otro',\n  detalle: d.detalle ?? '',\n  estado: 'Pendiente',\n  status: d.status ?? 'success',\n  worker: 'CUENTAS',\n  respuesta: d.respuesta ?? '',\n  requires_human: Boolean(d.requires_human)\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        336
+      ],
+      "id": "0ec2a5b9-21c5-40f3-9534-79e58cc7abe9",
+      "name": "Normalizar Cuenta"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1UuFQTrLKqY0j_fNS1DXDRDxYb6mLyGu8guCWQYb-zZs",
+          "mode": "list",
+          "cachedResultName": "Cuenta",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1UuFQTrLKqY0j_fNS1DXDRDxYb6mLyGu8guCWQYb-zZs/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Hoja 1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1UuFQTrLKqY0j_fNS1DXDRDxYb6mLyGu8guCWQYb-zZs/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Fecha": "={{ $json.fecha }}",
+            "Chat_id": "={{ $json.chat_id }}",
+            "Nombre": "={{ $json.nombre }}",
+            "Tipo": "={{ $json.tipo }}",
+            "Detalle": "={{ $json.detalle }}",
+            "Estado": "={{ $json.estado }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Fecha",
+              "displayName": "Fecha",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Chat_id",
+              "displayName": "Chat_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Nombre",
+              "displayName": "Nombre",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Tipo",
+              "displayName": "Tipo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Detalle",
+              "displayName": "Detalle",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Estado",
+              "displayName": "Estado",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        688,
+        336
+      ],
+      "id": "bf92545e-16ff-4cf5-9907-555ad05c3703",
+      "name": "Agregar en Sheets",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "ZiWwUocZP4ZHErwM",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const n = $('Normalizar Cuenta').first().json;\nreturn [{ json: {\n  status: n.status,\n  worker: n.worker,\n  respuesta: n.respuesta,\n  requires_human: n.requires_human\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        336
+      ],
+      "id": "b4f89eed-df9f-483b-b1b3-9925f1b63907",
+      "name": "Salida"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Especialista en CUENTA",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Entrada desde Manager": {
+      "main": [
+        [
+          {
+            "node": "Especialista en CUENTA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Especialista en CUENTA": {
+      "main": [
+        [
+          {
+            "node": "Normalizar Cuenta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar Cuenta": {
+      "main": [
+        [
+          {
+            "node": "Agregar en Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agregar en Sheets": {
+      "main": [
+        [
+          {
+            "node": "Salida",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "7bb9a786-c953-43fa-9fdb-a12c04d43e17",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8fbbf92d62e5a8d40f90ac0f8441dad56fe990e9f59ff823c2f4b7690d8bb89e"
+  },
+  "nodeGroups": [],
+  "id": "TgJZ5KKQqgZ4rqkP",
+  "tags": []
+}
