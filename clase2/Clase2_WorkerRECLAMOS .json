@@ -1,0 +1,321 @@
+{
+  "name": "3-RECLAMOS",
+  "nodes": [
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-120b",
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        -320,
+        400
+      ],
+      "id": "a1e04e6e-51df-4bb0-9201-dab1b7e1921d",
+      "name": "Groq Chat Model",
+      "credentials": {
+        "groqApi": {
+          "id": "QZBpb9cfNQ47n47F",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "original_input"
+            },
+            {
+              "name": "intent"
+            },
+            {
+              "name": "confidence",
+              "type": "number"
+            },
+            {
+              "name": "risk"
+            },
+            {
+              "name": "nombre_telegram"
+            },
+            {
+              "name": "chat_id"
+            }
+          ]
+        }
+      },
+      "id": "361d4104-3032-4f65-b1ab-a50e00598143",
+      "name": "Entrada desde Manager",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -544,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Sos el especialista en reclamos de Distribuidora Petriella, una distribuidora de productos de panadería, snacks y frutos secos.\n\nSolicitud original:\n{{ $json.original_input }}\n\nNombre en Telegram: {{ $json.nombre_telegram }}\nIntención detectada: {{ $json.intent }}\nConfianza: {{ $json.confidence }}\nRiesgo: {{ $json.risk }}\n\nTu tarea es registrar el reclamo del cliente y responderle con empatía. Atendé únicamente reclamos sobre pedidos: mercadería dañada o en mal estado, faltantes, producto equivocado, entrega demorada o no realizada.\n\nNo prometas reposición, reembolso, descuentos ni fechas. No inventes datos: si algo no figura en el mensaje, escribí \"No informado\".\n\nGravedad:\n- Alta: mercadería con riesgo para la salud o pedido no entregado.\n- Media: faltantes, producto equivocado o demora importante.\n- Baja: demora menor o consulta sobre un reclamo anterior.\n\nSi la gravedad es Alta o no tenés información suficiente, requires_human debe ser true.\n\nEscribí en español rioplatense, sin lenguaje inclusivo con terminaciones en -e, -x o @.\n\nRespondé SOLO como JSON válido, sin markdown:\n{\n  \"status\": \"success\",\n  \"worker\": \"RECLAMOS\",\n  \"nombre\": \"nombre del cliente o No informado\",\n  \"referencia\": \"producto o pedido afectado, o No informado\",\n  \"descripcion\": \"descripción breve y operativa del problema\",\n  \"gravedad\": \"Media\",\n  \"respuesta\": \"respuesta breve, empática y clara para el cliente\",\n  \"requires_human\": false\n}",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        -320,
+        208
+      ],
+      "id": "5ab893f4-7bfc-4290-bbfa-6984dd0d21db",
+      "name": "Especialista Reclamos - Groq"
+    },
+    {
+      "parameters": {
+        "jsCode": "const entrada = $('Entrada desde Manager').first().json;\nconst raw = $json.text ?? $json.output ?? $json.response ?? '';\nlet d;\ntry {\n  d = JSON.parse(String(raw).replace(/```json|```/gi, '').trim());\n} catch (e) {\n  d = {\n    status: 'error',\n    nombre: 'No informado',\n    referencia: 'No informado',\n    descripcion: String(raw || 'No se pudo interpretar la respuesta del especialista.'),\n    gravedad: 'Alta',\n    respuesta: 'Registramos tu reclamo y una persona del equipo se va a comunicar con vos.',\n    requires_human: true\n  };\n}\nconst gravedad = ['Alta', 'Media', 'Baja'].includes(d.gravedad) ? d.gravedad : 'Alta';\nreturn [{ json: {\n  fecha: new Date().toISOString(),\n  chat_id: entrada.chat_id,\n  nombre: d.nombre ?? 'No informado',\n  referencia: d.referencia ?? 'No informado',\n  descripcion: d.descripcion ?? '',\n  gravedad,\n  estado: 'Pendiente',\n  status: d.status ?? 'success',\n  worker: 'RECLAMOS',\n  respuesta: d.respuesta ?? '',\n  requires_human: Boolean(d.requires_human)\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        64,
+        208
+      ],
+      "id": "4b0fdc06-8195-4ee0-853a-eeca5abda63f",
+      "name": "Normalizar Reclamo"
+    },
+    {
+      "parameters": {
+        "jsCode": "const n = $('Normalizar Reclamo').first().json;\nreturn [{ json: {\n  status: n.status,\n  worker: n.worker,\n  respuesta: n.respuesta,\n  requires_human: n.requires_human\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        736,
+        208
+      ],
+      "id": "ff577295-0cae-47e2-90ac-444db3fa4ebd",
+      "name": "Salida"
+    },
+    {
+      "parameters": {
+        "chatId": "1486091356",
+        "text": "=🚨 Nuevo reclamo ({{ $('Normalizar Reclamo').first().json.gravedad }})\nCliente: {{ $('Normalizar Reclamo').first().json.nombre }}\nReferencia: {{ $('Normalizar Reclamo').first().json.referencia }}\nDetalle: {{ $('Normalizar Reclamo').first().json.descripcion }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        512,
+        208
+      ],
+      "id": "9c4ee661-e003-442f-be98-f9522ea5bd45",
+      "name": "Mensaje al humano",
+      "webhookId": "71fa6325-8e3c-4485-a333-39432add7534",
+      "credentials": {
+        "telegramApi": {
+          "id": "fr1YuKjcimXMFAOB",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1sO1HuOnbQoKuIuipGn0tjJ9FrbXB2b5umWozHG4uEFo",
+          "mode": "list",
+          "cachedResultName": "Reclamos",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1sO1HuOnbQoKuIuipGn0tjJ9FrbXB2b5umWozHG4uEFo/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Hoja 1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1sO1HuOnbQoKuIuipGn0tjJ9FrbXB2b5umWozHG4uEFo/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Fecha": "={{ $json.fecha }}",
+            "Chat_id": "={{ $json.chat_id }}",
+            "Nombre": "={{ $json.nombre }}",
+            "Referencia": "={{ $json.referencia }}",
+            "Descripcion": "={{ $json.descripcion }}",
+            "Gravedad": "={{ $json.gravedad }}",
+            "Estado": "={{ $json.estado }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Fecha",
+              "displayName": "Fecha",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Chat_id",
+              "displayName": "Chat_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Nombre",
+              "displayName": "Nombre",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Referencia",
+              "displayName": "Referencia",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Descripcion",
+              "displayName": "Descripcion",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Gravedad",
+              "displayName": "Gravedad",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Estado",
+              "displayName": "Estado",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        288,
+        208
+      ],
+      "id": "5ac0c383-5f22-4ce0-916c-50720bb026e6",
+      "name": "Agregar en Sheets",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "ZiWwUocZP4ZHErwM",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Especialista Reclamos - Groq",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Entrada desde Manager": {
+      "main": [
+        [
+          {
+            "node": "Especialista Reclamos - Groq",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Especialista Reclamos - Groq": {
+      "main": [
+        [
+          {
+            "node": "Normalizar Reclamo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar Reclamo": {
+      "main": [
+        [
+          {
+            "node": "Agregar en Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mensaje al humano": {
+      "main": [
+        [
+          {
+            "node": "Salida",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agregar en Sheets": {
+      "main": [
+        [
+          {
+            "node": "Mensaje al humano",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "69ae24a2-4015-44e1-ad77-994ed865d6ff",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8fbbf92d62e5a8d40f90ac0f8441dad56fe990e9f59ff823c2f4b7690d8bb89e"
+  },
+  "nodeGroups": [],
+  "id": "6LZKsvCEmNUSdjrA",
+  "tags": []
+}
