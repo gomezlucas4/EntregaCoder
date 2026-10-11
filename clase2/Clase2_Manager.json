@@ -1,0 +1,989 @@
+{
+  "name": "Clase 2",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "56dbcea7-8923-4e19-aba6-1b338a8c8065",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.5,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "97f9bc01-1d8b-4ab8-9197-6d3aba4572bb",
+      "credentials": {
+        "telegramApi": {
+          "id": "fr1YuKjcimXMFAOB",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1e60efc-1075-483f-a960-00392f7cebdb",
+              "name": "original_input",
+              "value": "={{ $json.message.text }}",
+              "type": "string"
+            },
+            {
+              "id": "7f37f971-b39d-454e-8aff-0ae441ed7cef",
+              "name": "chat_id",
+              "value": "={{ $json.message.from.id }}",
+              "type": "number"
+            },
+            {
+              "id": "0ddfffc3-d9a9-4238-9b6e-e25db9496510",
+              "name": "nombre_telegram",
+              "value": "={{ $json.message.from.first_name }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7767159c-2818-4a57-b032-a4e6779d6ba3",
+      "name": "Datos del mensaje",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Mensaje:\n{{ $json.original_input }}",
+        "options": {
+          "systemMessage": "Sos el Router de atención al cliente de Distribuidora Petriella, una distribuidora de productos de panadería, snacks y frutos secos. Los clientes escriben por chat.\n\nTu única tarea es clasificar. NO resuelvas el problema ni respondas al cliente.\n\nIntent permitidos:\n- PEDIDO: quiere hacer un pedido o consulta por productos, cantidades, disponibilidad o precios. También mensajes que solo aportan datos de una conversación en curso: nombre, mail, teléfono, producto o cantidad.\n- RECLAMO: problema con un pedido pendiente o ya recibido: mercadería dañada o en mal estado, faltantes, producto equivocado, entrega demorada o no realizada.\n- CUENTAS: facturas, pagos, comprobantes, saldo o estado de cuenta corriente.\n- UNKNOWN: ambiguo, saludo sin contenido o fuera de alcance.\n\nRisk:\n- LOW: consulta informativa o carga de datos de un pedido.\n- MEDIUM: reclamo común o gestión de cuenta sin monto en discusión.\n- HIGH: mercadería en mal estado o con riesgo para la salud, pedido de reembolso o descuento, disputa de montos, cancelación de pedidos o cualquier acción sensible.\n\nConfidence: número entre 0 y 1 sobre la clasificación.\n\nRespondé SOLO JSON válido, sin markdown:\n{\n  \"intent\": \"PEDIDO\",\n  \"confidence\": 0.95,\n  \"risk\": \"LOW\"\n}"
+        }
+      },
+      "id": "afcef777-3b46-4714-bce2-cbc1e683c8d3",
+      "name": "Router IA - Groq",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        432,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "model": "qwen/qwen3.8-27b",
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "id": "b959de47-6b70-4135-ba29-9a3e1c3aaa74",
+      "name": "Groq Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        432,
+        208
+      ],
+      "credentials": {
+        "groqApi": {
+          "id": "QZBpb9cfNQ47n47F",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const entrada = $('Datos del mensaje').first().json;\nconst raw = $json.text ?? $json.output ?? $json.response ?? '';\nlet d;\ntry {\n  d = JSON.parse(String(raw).replace(/```json|```/gi, '').trim());\n} catch (e) {\n  d = { intent: 'UNKNOWN', confidence: 0, risk: 'HIGH' };\n}\nconst allowed = ['PEDIDO', 'RECLAMO', 'CUENTAS', 'UNKNOWN'];\nconst intent = allowed.includes(d.intent) ? d.intent : 'UNKNOWN';\nconst confidence = Math.max(0, Math.min(1, Number(d.confidence ?? 0)));\nconst risk = ['LOW', 'MEDIUM', 'HIGH'].includes(d.risk) ? d.risk : 'HIGH';\nreturn [{ json: {\n  original_input: entrada.original_input,\n  chat_id: entrada.chat_id,\n  nombre_telegram: entrada.nombre_telegram,\n  intent, confidence, risk\n} }];"
+      },
+      "id": "cc868c56-0560-4ad0-be44-1a77e86436ad",
+      "name": "Normalizar contrato Router",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ddc5067d-ef11-4110-ab5a-e50708f9d543",
+              "leftValue": "={{ $json.risk }}",
+              "rightValue": "HIGH",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "8d9f8fd8-8648-4db8-ab00-9b563ba0c726",
+              "leftValue": "={{ $json.confidence }}",
+              "rightValue": 0.5,
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "9e2de2fc-9fd9-45c5-8033-41bfe3772389",
+      "name": "If",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1024,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "chatId": "1486091356",
+        "message": "=🚨 APROBACIÓN REQUERIDA\n\nSolicitud: {{ $('Datos del mensaje').first().json.original_input }}\n\nÁrea: {{ $('Normalizar contrato Router').first().json.intent }}\nConfianza: {{ Math.round($('Normalizar contrato Router').first().json.confidence * 100) }}%\nRiesgo: {{ $('Normalizar contrato Router').first().json.risk }}\n\nLa solicitud necesita revisión humana. ¿Autorizás continuar?",
+        "approvalOptions": {
+          "values": {
+            "approvalType": "double"
+          }
+        },
+        "options": {}
+      },
+      "id": "a68354d8-186e-48f7-ae4a-be023d6a581d",
+      "name": "Aprobacion humana",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1504,
+        288
+      ],
+      "webhookId": "d51da055-eb5a-4d6f-9b92-734a26e8647f",
+      "credentials": {
+        "telegramApi": {
+          "id": "fr1YuKjcimXMFAOB",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const aprobado = $json.data?.approved === true;\nreturn [{ json: {\n  status: aprobado ? 'approved_by_human' : 'rejected_by_human',\n  worker: 'HITL',\n  respuesta: aprobado\n    ? 'Un responsable revisó tu solicitud y la va a gestionar. Te vamos a contactar.'\n    : 'Un responsable revisó tu solicitud y no puede resolverse de forma automática. Te vamos a contactar.',\n  requires_human: true\n} }];"
+      },
+      "id": "c0b2d9b6-89aa-464c-93ac-b929db2c07c8",
+      "name": "Resultado HITL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1744,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().map(item => ({ json: {\n  timestamp: new Date().toISOString(),\n  status: item.json.status ?? 'success',\n  worker: item.json.worker ?? 'N/D',\n  respuesta: item.json.respuesta ?? '',\n  requires_human: Boolean(item.json.requires_human)\n} }));"
+      },
+      "id": "847df7d8-01ed-42e3-912c-3ca28a9a1a05",
+      "name": "Unificar respuesta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2112,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $('Normalizar contrato Router').first().json;\nreturn $input.all().map(item => ({ json: {\n  ...item.json,\n  chat_id: p.chat_id,\n  intent: p.intent,\n  confidence: p.confidence,\n  risk: p.risk,\n  payload_enviado: JSON.stringify({\n    original_input: p.original_input,\n    chat_id: p.chat_id,\n    nombre_telegram: p.nombre_telegram,\n    intent: p.intent,\n    confidence: p.confidence,\n    risk: p.risk\n  }),\n  log: `${item.json.timestamp} | worker=${item.json.worker} | status=${item.json.status} | HITL=${item.json.requires_human}`\n} }));"
+      },
+      "id": "8937fcad-1984-4ab6-9f25-6faa914cce5d",
+      "name": "Log de ejecucion",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2352,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1n6G0_96LeqnrRV4YUuig4XieUD_rMsUGMIuvi-PupQg",
+          "mode": "list",
+          "cachedResultName": "Logs_Multiagente",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1n6G0_96LeqnrRV4YUuig4XieUD_rMsUGMIuvi-PupQg/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Hoja 1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1n6G0_96LeqnrRV4YUuig4XieUD_rMsUGMIuvi-PupQg/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "timestamp": "={{ $json.timestamp}}",
+            "chat_id": "={{ $json.chat_id}}",
+            "worker": "={{ $json.worker}}",
+            "intent": "={{ $json.intent}}",
+            "confidence": "={{ $json.confidence}}",
+            "risk": "={{ $json.risk}}",
+            "payload_enviado": "={{$json.payload_enviado}}",
+            "respuesta": "={{ $json.respuesta}}",
+            "status": "={{ $json.status}}",
+            "requires_human": "={{ $json.requires_human}}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "chat_id",
+              "displayName": "chat_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "worker",
+              "displayName": "worker",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "intent",
+              "displayName": "intent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "confidence",
+              "displayName": "confidence",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "risk",
+              "displayName": "risk",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "payload_enviado",
+              "displayName": "payload_enviado",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "respuesta",
+              "displayName": "respuesta",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "requires_human",
+              "displayName": "requires_human",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "ecd60522-63c4-427b-afd8-a4159cd1c508",
+      "name": "Logs multiagente",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2576,
+        -16
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "ZiWwUocZP4ZHErwM",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Normalizar contrato Router').first().json.chat_id }}",
+        "text": "={{ $('Unificar respuesta').first().json.respuesta }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "89f3ba8d-ff8d-4ae1-887f-47a96bb3d87f",
+      "name": "Send a text message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2800,
+        -16
+      ],
+      "webhookId": "c2b585fe-8031-4369-a027-6aac145f6837",
+      "credentials": {
+        "telegramApi": {
+          "id": "fr1YuKjcimXMFAOB",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "CUENTAS",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "da9a067f-56dc-438c-a36d-8b1a8141d57b"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "CUENTAS"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "37da353b-7574-414a-b5df-2ebecc11f9b9",
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "RECLAMO",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "RECLAMO"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "3e74fa03-ed24-429c-b981-35420319e68c",
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "PEDIDO",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "PEDIDO"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "id": "6bd712c2-3801-4ed7-9962-f3634ae1e0a2",
+      "name": "Switch",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1264,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "TgJZ5KKQqgZ4rqkP",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/TgJZ5KKQqgZ4rqkP",
+          "cachedResultName": "1-CUENTA"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "original_input": "={{ $('Normalizar contrato Router').item.json.original_input }}",
+            "intent": "={{ $('Normalizar contrato Router').item.json.intent }}",
+            "confidence": "={{ $('Normalizar contrato Router').item.json.confidence }}",
+            "risk": "={{ $('Normalizar contrato Router').item.json.risk }}",
+            "chat_id": "={{ $('Normalizar contrato Router').item.json.chat_id.toString() }}",
+            "nombre_telegram": "={{ $('Normalizar contrato Router').item.json.nombre_telegram }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "original_input",
+              "displayName": "original_input",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "intent",
+              "displayName": "intent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "confidence",
+              "displayName": "confidence",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "risk",
+              "displayName": "risk",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "chat_id",
+              "displayName": "chat_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "nombre_telegram",
+              "displayName": "nombre_telegram",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "9da50de2-4ccc-45e0-b04d-8b9e6a1e3db3",
+      "name": "Ejecutar Worker Cuenta",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1504,
+        -288
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "6LZKsvCEmNUSdjrA",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/6LZKsvCEmNUSdjrA",
+          "cachedResultName": "3-RECLAMOS"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "original_input": "={{ $('Normalizar contrato Router').item.json.original_input }}",
+            "intent": "={{ $('Normalizar contrato Router').item.json.intent }}",
+            "confidence": "={{ $('Normalizar contrato Router').item.json.confidence }}",
+            "risk": "={{ $('Normalizar contrato Router').item.json.risk }}",
+            "nombre_telegram": "={{ $('Normalizar contrato Router').item.json.nombre_telegram }}",
+            "chat_id": "={{ $('Normalizar contrato Router').item.json.chat_id.toString() }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "original_input",
+              "displayName": "original_input",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "intent",
+              "displayName": "intent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "confidence",
+              "displayName": "confidence",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "risk",
+              "displayName": "risk",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "nombre_telegram",
+              "displayName": "nombre_telegram",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "chat_id",
+              "displayName": "chat_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "eafdca3e-a1df-48e8-9c84-9915a570bd1f",
+      "name": "Ejecutar Worker Reclamo",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1504,
+        -96
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "aDNcF2GBBz7isFA2",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/aDNcF2GBBz7isFA2",
+          "cachedResultName": "2-PEDIDOS"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "original_input": "={{ $('Normalizar contrato Router').item.json.original_input }}",
+            "intent": "={{ $('Normalizar contrato Router').item.json.intent }}",
+            "confidence": "={{ $('Normalizar contrato Router').item.json.confidence }}",
+            "risk": "={{ $('Normalizar contrato Router').item.json.risk }}",
+            "nombre_telegram": "={{ $('Normalizar contrato Router').item.json.nombre_telegram }}",
+            "chat_id": "={{ $('Normalizar contrato Router').item.json.chat_id.toString() }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "original_input",
+              "displayName": "original_input",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "intent",
+              "displayName": "intent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "confidence",
+              "displayName": "confidence",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "risk",
+              "displayName": "risk",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "nombre_telegram",
+              "displayName": "nombre_telegram",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "chat_id",
+              "displayName": "chat_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "254b3ddf-9f0c-43d2-8e98-2f0c47c3dcf7",
+      "name": "Ejecutar Worker Pedido",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1504,
+        80
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Datos del mensaje",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Datos del mensaje": {
+      "main": [
+        [
+          {
+            "node": "Router IA - Groq",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Router IA - Groq": {
+      "main": [
+        [
+          {
+            "node": "Normalizar contrato Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Router IA - Groq",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar contrato Router": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Aprobacion humana",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aprobacion humana": {
+      "main": [
+        [
+          {
+            "node": "Resultado HITL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resultado HITL": {
+      "main": [
+        [
+          {
+            "node": "Unificar respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Unificar respuesta": {
+      "main": [
+        [
+          {
+            "node": "Log de ejecucion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log de ejecucion": {
+      "main": [
+        [
+          {
+            "node": "Logs multiagente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Logs multiagente": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Ejecutar Worker Cuenta",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ejecutar Worker Reclamo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ejecutar Worker Pedido",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Aprobacion humana",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ejecutar Worker Cuenta": {
+      "main": [
+        [
+          {
+            "node": "Unificar respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ejecutar Worker Reclamo": {
+      "main": [
+        [
+          {
+            "node": "Unificar respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ejecutar Worker Pedido": {
+      "main": [
+        [
+          {
+            "node": "Unificar respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "9ab2ec08-c48f-4a4a-ab5c-1a18e5aa839d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8fbbf92d62e5a8d40f90ac0f8441dad56fe990e9f59ff823c2f4b7690d8bb89e"
+  },
+  "nodeGroups": [],
+  "id": "pM5UmDwIuoKCpNTr",
+  "tags": []
+}
