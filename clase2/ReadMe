@@ -1,0 +1,175 @@
+# Orquestación multi-agente para Distribuidora Petriella
+
+Sistema multi-agente en n8n que recibe mensajes de clientes por Telegram, clasifica la intención con un Router de IA y delega la tarea a un worker especialista: pedidos, reclamos o cuentas. Los casos ambiguos o de riesgo alto pasan por aprobación humana, y cada ejecución queda auditada en Google Sheets.
+
+> **Estado:** pre-entrega del Módulo 2 (orquestación multi-agente distribuida). Evoluciona la primera versión, un agente único de registro de consultas.
+
+## El problema
+
+Los mensajes que llegan por chat son de naturaleza distinta: pedidos, reclamos por mercadería, consultas de facturación o pagos. Cada tipo necesita un tratamiento propio. Un único flujo que resuelva todo mezcla reglas, es difícil de probar y de mantener, y no deja claro quién hizo qué.
+
+## La solución
+
+Una arquitectura **Manager–Worker**:
+
+- **Manager (orquestador):** recibe el mensaje, lo clasifica, decide a qué especialista delegarlo, espera su resultado y deja el registro de auditoría.
+- **Workers (sub-workflows):** tres flujos independientes, cada uno con una única tarea atómica y un contrato de datos explícito.
+- **Human-in-the-loop:** si el caso es de riesgo alto, de baja confianza o no se reconoce, se pide aprobación humana por Telegram antes de seguir.
+- **Trazabilidad:** cada corrida registra qué worker se invocó, qué parámetros se le enviaron y qué respondió.
+
+## Arquitectura
+
+```mermaid
+flowchart TD
+    A[Cliente en Telegram] --> B[Telegram Trigger]
+    B --> C[Datos del mensaje]
+    C --> D[Router IA]
+    D --> E[Normalizar contrato Router]
+    E --> F{"¿Riesgo HIGH o confianza menor a 0.5?"}
+    F -- Sí --> H[Aprobación humana]
+    F -- No --> G{Switch por intención}
+    G -- PEDIDO --> W1[Worker Pedidos]
+    G -- RECLAMO --> W2[Worker Reclamos]
+    G -- CUENTAS --> W3[Worker Cuentas]
+    G -- UNKNOWN --> H
+    H --> R[Resultado HITL]
+    W1 --> U[Unificar respuesta]
+    W2 --> U
+    W3 --> U
+    R --> U
+    U --> L[Log de ejecución en Sheets]
+    L --> T[Respuesta al cliente en Telegram]
+```
+
+## Componentes
+
+| Flujo | Rol | Tarea atómica | Resultado |
+|---|---|---|---|
+| **Clase 2** (Manager) | Orquestador | Clasificar, decidir, delegar y auditar | Fila en `Logs_Multiagente` y respuesta al cliente |
+| **2-PEDIDOS** | Worker | Toma los datos del cliente en conversación (con memoria) y registra la consulta con prioridad y próxima acción | Fila en la hoja `Registrar_Consulta` |
+| **3-RECLAMOS** | Worker | Extrae los datos del reclamo, lo registra con gravedad y avisa a un responsable | Fila en la hoja `Reclamos` y aviso por Telegram |
+| **1-CUENTA** | Worker | Registra solicitudes de facturas, pagos, comprobantes o saldo para que administración las resuelva | Fila en la hoja `Cuenta` |
+
+## Criterio de enrutamiento
+
+El Router (un nodo AI Agent usado como clasificador) responde un JSON con `intent`, `confidence` y `risk`. Un nodo Code valida la salida contra una taxonomía cerrada. Si el JSON es inválido o el valor no está permitido, el caso cae en `UNKNOWN` con riesgo `HIGH`, así que ante cualquier duda interviene una persona.
+
+| Intent | Cuándo se usa | Destino |
+|---|---|---|
+| `PEDIDO` | Pedidos, consultas por productos y mensajes que aportan datos de una conversación en curso | Worker Pedidos |
+| `RECLAMO` | Problemas con un pedido: faltantes, producto equivocado, demoras, mercadería dañada | Worker Reclamos |
+| `CUENTAS` | Facturas, pagos, comprobantes, saldo o cuenta corriente | Worker Cuentas |
+| `UNKNOWN` | Ambiguo, saludo sin contenido o fuera de alcance | Aprobación humana |
+
+| Riesgo | Ejemplos |
+|---|---|
+| `LOW` | Consulta informativa o carga de datos de un pedido |
+| `MEDIUM` | Reclamo común o gestión de cuenta sin monto en discusión |
+| `HIGH` | Mercadería en mal estado o con riesgo para la salud, reembolsos o descuentos, disputa de montos, cancelaciones |
+
+**Regla de aprobación humana:** va a HITL todo caso con riesgo `HIGH`, con confianza menor a 0.5 o con intención `UNKNOWN`.
+
+## Contrato de datos
+
+El Manager envía al worker un JSON mínimo y limpio, y espera su respuesta. En cada nodo *Execute Workflow* está activada la opción **Wait For Sub-Workflow Completion**.
+
+**Manager → Worker**
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `original_input` | string | Mensaje original del cliente |
+| `chat_id` | number | ID del chat de Telegram |
+| `nombre_telegram` | string | Nombre del cliente en Telegram |
+| `intent` | string | Intención detectada |
+| `confidence` | number | Confianza de la clasificación (0 a 1) |
+| `risk` | string | Riesgo: LOW, MEDIUM o HIGH |
+
+**Worker → Manager**
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `status` | string | `success`, `error` o el resultado de HITL |
+| `worker` | string | PEDIDOS, RECLAMOS, CUENTAS o HITL |
+| `respuesta` | string | Texto que se le envía al cliente |
+| `requires_human` | boolean | Indica si hace falta seguimiento humano |
+
+Los cuatro caminos (los tres workers y HITL) devuelven este mismo contrato, por eso el Manager los procesa con un único tramo final.
+
+## Trazabilidad
+
+Cada ejecución agrega una fila en la hoja `Logs_Multiagente`:
+
+| Columna | Contenido |
+|---|---|
+| `timestamp` | Fecha y hora de la ejecución |
+| `chat_id` | Chat del cliente |
+| `worker` | Worker invocado |
+| `intent`, `confidence`, `risk` | Clasificación del Router |
+| `payload_enviado` | JSON completo con los parámetros enviados al worker |
+| `respuesta` | Respuesta devuelta |
+| `status` | Resultado de la ejecución |
+| `requires_human` | Si requiere seguimiento humano |
+
+## Datos que registra cada worker
+
+| Hoja | Columnas |
+|---|---|
+| `Registrar_Consulta` | Session_ID, Nombre, Mail, Telefono, Producto, Cantidad, Proxima_accion, Resumen, Prioridad |
+| `Reclamos` | Fecha, Chat_id, Nombre, Referencia, Descripcion, Gravedad, Estado |
+| `Cuenta` | Fecha, Chat_id, Nombre, Tipo, Detalle, Estado |
+
+Reglas de prioridad del worker de pedidos (valores de ejemplo, configurables en la descripción de la tool):
+
+- **Alta:** 50 o más unidades, bultos o cajas, o 25 kg o más.
+- **Media:** entre 10 y 49 unidades, bultos o cajas, o entre 5 y 24 kg.
+- **Baja:** menos que eso, o cantidad no definida.
+
+## Guardrails
+
+- Ningún worker confirma pedidos, informa precios, stock, descuentos ni plazos, ni promete reintegros o fechas.
+- Si falta información, los workers escriben "No informado" en lugar de inventarla.
+- Los workers de reclamos y cuentas marcan `requires_human` cuando falta información o hay montos involucrados.
+- El aviso de reclamos llega a un responsable por Telegram.
+- Las respuestas están en español rioplatense, sin lenguaje inclusivo con terminaciones en -e, -x o @.
+
+## Casos de prueba
+
+| Mensaje | Ruta esperada | Resultado |
+|---|---|---|
+| "Hola, soy Marta Gómez, marta@mail.com, necesito 60 cajas de pan lactal" | PEDIDO → Worker Pedidos | Fila en `Registrar_Consulta` y confirmación al cliente |
+| "Me llegó el pedido de ayer con 3 cajas menos de las que pedí" | RECLAMO → Worker Reclamos | Fila en `Reclamos`, aviso al responsable y respuesta empática |
+| "Necesito que me manden la factura de septiembre" | CUENTAS → Worker Cuentas | Fila en `Cuenta` y confirmación de solicitud recibida |
+| "Hola" | UNKNOWN → Aprobación humana | Botones de aprobación enviados al responsable |
+
+En todos los casos se agrega una fila en `Logs_Multiagente`.
+
+## Stack
+
+n8n (orquestación, sub-workflows, nodo AI Agent) · Groq (modelos de lenguaje, `openai/gpt-oss-120b` en el worker de pedidos) · Telegram Bot API (canal y aprobación humana) · Google Sheets (registros y log)
+
+## Configuración
+
+1. Crear un bot en Telegram con BotFather y guardar el token.
+2. Crear las cuatro planillas de Google Sheets (`Registrar_Consulta`, `Reclamos`, `Cuenta` y `Logs_Multiagente`) con los encabezados de las tablas de arriba.
+3. En n8n, crear las credenciales de Telegram, Groq y Google Sheets.
+4. Crear primero los tres workers, cada uno con un nodo *Execute Workflow Trigger* que declare los 6 campos del contrato.
+5. Crear el Manager y, en cada nodo *Execute Workflow*, elegir el worker correspondiente y mapear los 6 campos.
+6. Activar la opción *Wait For Sub-Workflow Completion* en los tres nodos.
+7. En el nodo de aprobación humana, poner el chat ID de la persona responsable.
+8. Probar con los cuatro mensajes de la tabla y revisar el panel de ejecución.
+
+## Limitaciones y próximos pasos
+
+- [ ] **Aprobación que reanuda el flujo:** hoy, tras la aprobación humana, solo se informa al cliente. A futuro, una aprobación podría reenviar el caso al worker que corresponda.
+- [ ] **Contexto en el Router:** cada mensaje se clasifica por separado. Una conversación en curso se sostiene con una regla del prompt (los mensajes con datos sueltos se tratan como `PEDIDO`). Pasar el historial reciente la haría más robusta.
+- [ ] **Saludos y charla casual:** hoy un "Hola" va a revisión humana. Una intención de saludo evitaría ese paso.
+- [ ] **Memoria en reclamos y cuentas:** solo el worker de pedidos conversa en varios turnos.
+- [ ] **Mensajes que no son de texto:** audios y fotos no están contemplados.
+- [ ] **Precios y stock:** conectar una hoja de catálogo para cotizar automáticamente.
+- [ ] **Manejo de errores:** un flujo de errores que avise si falla un worker o el log.
+- [ ] **Canal:** migrar de Telegram a WhatsApp cambiando el nodo de entrada y el de salida.
+- [ ] **Límites del plan gratuito de Groq:** hay topes de uso por minuto y por día.
+
+## Seguridad
+
+No subas al repositorio credenciales, tokens ni IDs de planilla o de chat. Si más adelante publicás los JSON de los flujos, eliminá antes los bloques `credentials`, el `instanceId`, los `documentId` y cualquier `chatId` fijo.
