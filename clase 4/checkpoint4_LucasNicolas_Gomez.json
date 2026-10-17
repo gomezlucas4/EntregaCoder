@@ -1,0 +1,568 @@
+{
+  "name": "Checkpoint 4",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {},
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "59ede037-f295-4014-85f7-80dd12247248",
+      "name": "Gmail Trigger",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "2c1oTfUaCyJwId05",
+          "name": "elmaildepruebas"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "fbd5a5c1-05e5-4867-8646-31741a54b83a",
+              "leftValue": "={{ /auto-reply|auto reply|out of office|undeliverable/i.test($json.subject ?? '') || /no-?reply@/i.test($json.from?.value?.[0]?.address ?? '') }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        224,
+        0
+      ],
+      "id": "f2924073-13fd-400c-af71-e67e080e8a08",
+      "name": "Es auto-reply?"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b92a9911-3e5d-49b1-972f-fd64df5df976",
+              "name": "From",
+              "value": "={{ $json.from?.value?.[0]?.address ?? '' }}",
+              "type": "string"
+            },
+            {
+              "id": "d175e128-0dab-4814-8776-bd203cf32647",
+              "name": "Subject",
+              "value": "={{ $json.subject ?? '' }}",
+              "type": "string"
+            },
+            {
+              "id": "addaf049-2490-4439-a848-6ea0d53e01bb",
+              "name": "BodyText",
+              "value": "={{ String($json.text ?? '').slice(0, 4000) }}",
+              "type": "string"
+            },
+            {
+              "id": "99087ec8-e13b-4597-9f20-567c435c0577",
+              "name": "Message_ID",
+              "value": "={{ $json.id ?? '' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        448,
+        96
+      ],
+      "id": "dd6bd824-0f1f-484c-a510-ef3659c937d0",
+      "name": "Limpiar payload Email"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "dbf5b220-aee6-4d83-9d7b-72b77254849c",
+              "leftValue": "={{ /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test($json.From ?? '') }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        672,
+        96
+      ],
+      "id": "b5294f05-7acd-48e9-aa1e-1d95e6f5565c",
+      "name": "Email valido ?"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "operation": "search",
+        "limit": 1,
+        "filterGroupsUi": {
+          "filterGroupsValues": [
+            {
+              "filtersUi": {
+                "filterValues": [
+                  {
+                    "propertyName": "email|string",
+                    "value": "={{ $('Limpiar payload Email').first().json.From }}"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        1264,
+        16
+      ],
+      "id": "c0af419b-817b-46aa-b362-169ea0c3a6f1",
+      "name": "Search contacts",
+      "alwaysOutputData": true,
+      "credentials": {
+        "hubspotOAuth2Api": {
+          "id": "OPenyLXypZWQhiPU",
+          "name": "HubSpot account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "006672cd-d4a6-42ee-896f-f0bee1464454",
+              "leftValue": "={{ !!$json.id }}",
+              "rightValue": "=",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1488,
+        16
+      ],
+      "id": "0a62613d-6622-4e22-800a-9cc5f692537f",
+      "name": "El contacto existe?"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "email": "={{ $('Limpiar payload Email').first().json.From }}",
+        "additionalFields": {
+          "firstName": "={{ $('Extraer datos del cliente').first().json.output.nombre }}",
+          "lastName": "={{ $('Extraer datos del cliente').first().json.output.apellido }}"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        1696,
+        96
+      ],
+      "id": "2710858a-f81a-4491-95ad-9002c8cd06d5",
+      "name": "Crear contacto",
+      "credentials": {
+        "hubspotOAuth2Api": {
+          "id": "OPenyLXypZWQhiPU",
+          "name": "HubSpot account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "email": "={{ $('Limpiar payload Email').first().json.From }}",
+        "additionalFields": {
+          "firstName": "={{ $('Extraer datos del cliente').first().json.output.nombre || $('Search contacts').first().json.properties?.firstname || '' }}",
+          "lastName": "={{ $('Extraer datos del cliente').first().json.output.apellido || $('Search contacts').first().json.properties?.lastname || '' }}"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        1696,
+        -80
+      ],
+      "id": "7f5da57b-516c-4a78-8a6a-0dee57a1b1f1",
+      "name": "Actualizar contacto",
+      "credentials": {
+        "hubspotOAuth2Api": {
+          "id": "OPenyLXypZWQhiPU",
+          "name": "HubSpot account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "text": "={{ $('Limpiar payload Email').first().json.BodyText }}",
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"nombre\": {\n      \"type\": \"string\"\n    },\n    \"apellido\": {\n      \"type\": \"string\"\n    },\n    \"tipo_consulta\": {\n      \"type\": \"string\",\n      \"enum\": [\n        \"disponibilidad\",\n        \"precio\",\n        \"pedido\",\n        \"reclamo\",\n        \"otra\"\n      ]\n    },\n    \"productos\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"string\"\n      }\n    },\n    \"resumen\": {\n      \"type\": \"string\"\n    },\n    \"requiere_respuesta\": {\n      \"type\": \"boolean\"\n    }\n  },\n  \"required\": [\n    \"nombre\",\n    \"apellido\",\n    \"tipo_consulta\",\n    \"productos\",\n    \"resumen\",\n    \"requiere_respuesta\"\n  ]\n}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.informationExtractor",
+      "typeVersion": 1.2,
+      "position": [
+        944,
+        16
+      ],
+      "id": "e8b7b9ff-adc5-44b7-a13d-ebcf3dc2d07c",
+      "name": "Extraer datos del cliente"
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-120b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        960,
+        192
+      ],
+      "id": "1f6bb540-2e6f-4b34-a191-8b9a8010319b",
+      "name": "Groq Chat Model",
+      "credentials": {
+        "groqApi": {
+          "id": "QZBpb9cfNQ47n47F",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "draft",
+        "subject": "={{ 'Re: ' + $('Limpiar payload Email').first().json.Subject }}",
+        "message": "={{ 'Hola' + ($('Extraer datos del cliente').first().json.output?.nombre ? ' ' + $('Extraer datos del cliente').first().json.output.nombre : '') + ',\\n\\nGracias por contactarnos. Recibimos tu consulta y la estamos revisando.\\n\\nTe responderemos a la brevedad.\\n\\nSaludos,\\nEquipo de atención al cliente' }}",
+        "options": {
+          "sendTo": "={{ $('Limpiar payload Email').first().json.From }}"
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1888,
+        96
+      ],
+      "id": "c5b7d415-5715-4dea-82b7-a6445811c98b",
+      "name": "Create a draft",
+      "webhookId": "89add284-eabd-44d1-968b-f08f06857e50",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "2c1oTfUaCyJwId05",
+          "name": "elmaildepruebas"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "draft",
+        "subject": "={{ 'Re: ' + $('Limpiar payload Email').first().json.Subject }}",
+        "message": "={{ 'Hola' + ($('Extraer datos del cliente').first().json.output?.nombre ? ' ' + $('Extraer datos del cliente').first().json.output.nombre : '') + ',\\n\\nGracias por contactarnos. Recibimos tu consulta y la estamos revisando.\\n\\nTe responderemos a la brevedad.\\n\\nSaludos,\\nEquipo de atención al cliente' }}",
+        "options": {
+          "sendTo": "={{ $('Limpiar payload Email').first().json.From }}"
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1888,
+        -80
+      ],
+      "id": "758e4cd2-04f0-47ce-8523-4a893444eadf",
+      "name": "Create a draft1",
+      "webhookId": "89add284-eabd-44d1-968b-f08f06857e50",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "2c1oTfUaCyJwId05",
+          "name": "elmaildepruebas"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "884e394c-89a9-4ae4-8d41-da3a8ef91ea9",
+              "name": "mensaje_slack",
+              "value": "={{ '📩 Nueva consulta recibida\\n' +\n'Cliente: ' + ($('Extraer datos del cliente').first().json.output.nombre || 'No informado') + ' ' +\n($('Extraer datos del cliente').first().json.output.apellido || '') + '\\n' +\n'Email: ' + $('Limpiar payload Email').first().json.From + '\\n' +\n'Asunto: ' + $('Limpiar payload Email').first().json.Subject + '\\n' +\n'Consulta: ' + ($('Extraer datos del cliente').first().json.output.resumen || 'Sin resumen') + '\\n' +\n'Estado: Contacto procesado en HubSpot. Borrador creado en Gmail, pendiente de revisión.' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        2112,
+        16
+      ],
+      "id": "4c9e6a33-a74f-4a53-ae13-d189a02e8e8a",
+      "name": "Edit Fields1"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C0C10BMMVKQ",
+          "mode": "list",
+          "cachedResultName": "canal-ejemplo"
+        },
+        "text": "={{ $json.mensaje_slack }}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.7,
+      "position": [
+        2336,
+        16
+      ],
+      "id": "afa33270-8ab9-4dee-bc46-55ecf9e29234",
+      "name": "Send a message",
+      "webhookId": "9a7da53b-6838-455e-8204-5268c8dec120",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "UBgN7LV06NTXOKMu",
+          "name": "Slack account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Es auto-reply?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Es auto-reply?": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Limpiar payload Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limpiar payload Email": {
+      "main": [
+        [
+          {
+            "node": "Email valido ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email valido ?": {
+      "main": [
+        [
+          {
+            "node": "Extraer datos del cliente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search contacts": {
+      "main": [
+        [
+          {
+            "node": "El contacto existe?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "El contacto existe?": {
+      "main": [
+        [
+          {
+            "node": "Actualizar contacto",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Crear contacto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer datos del cliente": {
+      "main": [
+        [
+          {
+            "node": "Search contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Extraer datos del cliente",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crear contacto": {
+      "main": [
+        [
+          {
+            "node": "Create a draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Actualizar contacto": {
+      "main": [
+        [
+          {
+            "node": "Create a draft1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create a draft": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create a draft1": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields1": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "2e411de6-4ddf-445d-ba94-bfc754459842",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8fbbf92d62e5a8d40f90ac0f8441dad56fe990e9f59ff823c2f4b7690d8bb89e"
+  },
+  "nodeGroups": [],
+  "id": "orn8JKYIfDdd1Jpr",
+  "tags": []
+}
